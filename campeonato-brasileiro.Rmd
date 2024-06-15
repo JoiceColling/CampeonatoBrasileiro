@@ -1,0 +1,247 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Pacotes necessários
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(readr)
+```
+
+# Carregar o dataset
+```{r}
+dadosOriginal <- read.csv("./campeonato-brasileiro-full.csv")
+sprintf("Total de registros: %s", nrow(dadosOriginal))
+```
+
+# Adicionar coluna "ano" para facilitar a extração dos dados
+```{r}
+dadosOriginal$data <- as.Date(dadosOriginal$data, format = "%d/%m/%Y")
+dadosOriginal$ano <- format(dadosOriginal$data, "%Y")
+```
+
+# Obter registros com ano >= 2018
+```{r}
+dados <- dadosOriginal %>% filter(ano >= 2018)
+sprintf("Total de registros: %s", nrow(dados))
+```
+
+# Criar variável "anos" para obter resultados posteriormente
+```{r}
+anos <- 2018:2023
+```
+
+# Dividir o dataset em dois, um para os jogos do Grêmio e outro do Inter
+```{r}
+dados_gremio = dados %>% filter(mandante == "Gremio" | visitante == "Gremio")
+dados_inter = dados %>%filter(mandante == "Internacional" | visitante == "Internacional")
+```
+
+# Visualizar as 6 primeiras linhas do Grêmio e total
+```{r}
+tail(dados_gremio)
+sprintf("Total de registros Grêmio: %s", nrow(dados_gremio))
+```
+
+# Visualizar as 6 primeiras linhas do Inter e total
+```{r}
+tail(dados_inter)
+sprintf("Total de registros Inter: %s", nrow(dados_inter))
+```
+
+# Distribuição dos jogos de Grêmio e Internacional ao longo dos anos
+```{r}
+# Criar novo dataframe para contar os jogos por ano
+gremio_nr_jogos_anual <- dados_gremio %>% 
+  group_by(ano) %>% 
+  summarize(total_jogos = n()) %>% 
+  mutate(time = "Grêmio")
+            
+inter_nr_jogos_anual <- dados_inter %>% 
+  group_by(ano) %>% 
+  summarize(total_jogos = n()) %>% 
+  mutate(time = "Internacional")
+
+# Combinar os dados em um único dataframe
+nr_jogos_anual <- bind_rows(gremio_nr_jogos_anual, inter_nr_jogos_anual)
+
+# Gráfico
+ggplot(nr_jogos_anual, aes(x = ano, y = total_jogos, fill = time)) +
+  geom_bar(stat="identity", position = "dodge") +
+  labs(title="Número de Jogos por Ano (Grêmio e Internacional)", x="Ano", y="Total de Jogos") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Grêmio" = "blue", "Internacional" = "red"))
+```
+
+# Calcular o desempenho em casa e fora
+```{r}
+calcular_desempenho_time <- function(p_time, p_dados, p_ano) {
+  p_dados <- p_dados %>% filter(ano == p_ano)
+  
+  #totais
+  total_vitorias <- p_dados %>% filter(vencedor == p_time) %>% nrow()
+  total_empates <- p_dados %>%filter(vencedor == "-") %>% nrow()
+  total_derrotas <- p_dados %>%filter(vencedor != "-" & vencedor != p_time) %>% nrow()
+  
+  # Obter jogos em casa e fora
+  jogos_casa <- p_dados %>% filter(mandante == p_time)
+  jogos_fora <- p_dados %>% filter(visitante == p_time)
+  
+  # Calcular número de vitórias em casa e fora
+  vitorias_casa <- sum(jogos_casa$vencedor == p_time, na.rm = TRUE)
+  vitorias_fora <- sum(jogos_fora$vencedor == p_time, na.rm = TRUE)
+  
+  # Calcular percentuais de vitória em casa e fora
+  if (nrow(jogos_casa) > 0) {
+    pct_vitorias_casa <- (vitorias_casa / nrow(jogos_casa)) * 100
+  } else {
+    pct_vitorias_casa <- 0
+  }
+  
+  if (nrow(jogos_fora) > 0) {
+    pct_vitorias_fora <- (vitorias_fora / nrow(jogos_fora)) * 100
+  } else {
+    pct_vitorias_fora <- 0
+  }
+  
+  return(data.frame(
+    Time = p_time,
+    Ano = p_ano,
+    `Total jogos` = nrow(p_dados),
+    `Total vitórias` = total_vitorias,
+    `Total empates` = total_empates,
+    `Total derrotas` = total_derrotas,
+    `Jogos casa` = nrow(jogos_casa),
+    `Jogos fora` = nrow(jogos_fora),
+    `Vitórias casa` = vitorias_casa,
+    `Vitórias fora` = vitorias_fora,
+    `Perc vitórias casa` = pct_vitorias_casa,
+    `Perc vitórias fora` = pct_vitorias_fora
+  ))
+}
+```
+
+# Mostrar desempenho Grêmio
+```{r}
+desempenho_gremio <- data.frame()
+for (ano in anos) {
+  desempenho_gremio <- rbind(desempenho_gremio, calcular_desempenho_time("Gremio", dados_gremio, ano))
+}
+
+print(desempenho_gremio)
+```
+
+# Mostrar desempenho Inter
+```{r}
+desempenho_inter <- data.frame()
+for (ano in anos) {
+  desempenho_inter <- rbind(desempenho_inter, calcular_desempenho_time("Internacional", dados_inter, ano))
+}
+
+print(desempenho_inter)
+```
+
+# Calcular gols
+```{r}
+calcular_gols <- function(p_time, p_dados, p_ano) {
+  p_dados <- p_dados %>% filter(ano == p_ano)
+  
+  marcados <- sum(p_dados$mandante_Placar[p_dados$mandante == p_time]) +
+              sum(p_dados$visitante_Placar[p_dados$visitante == p_time])
+  
+  sofridos <- sum(p_dados$visitante_Placar[p_dados$mandante == p_time]) +
+              sum(p_dados$mandante_Placar[p_dados$visitante == p_time])
+  
+  return(data.frame(
+    time = p_time,
+    ano = p_ano,
+    gols_marcados = marcados,
+    gols_sofridos = sofridos
+  ))
+}
+
+resultado <- data.frame()
+for (ano in anos) {
+  resultado <- rbind(resultado, calcular_gols("Gremio", dados_gremio, ano))
+  resultado<- rbind(resultado, calcular_gols("Internacional", dados_inter, ano))
+}
+
+print(resultado)
+
+resultado <- resultado %>%
+  pivot_longer(cols = c(gols_marcados, gols_sofridos), names_to = "tipo", values_to = "gols")
+
+# Gráfico
+ggplot(resultado, aes(x = ano, y = gols, color = tipo)) +
+  geom_line() +
+  facet_wrap(~ time) +
+  scale_color_manual(values = c("gols_marcados" = "blue", "gols_sofridos" = "red")) +
+  labs(title = "Gols Marcados e Sofridos por Ano (2018-2023)",
+       x = "Ano",
+       y = "Média de Gols",
+       color = "Tipo de Gols") +
+  theme_minimal()
+```
+
+# Análise de Grenal
+```{r}
+grenal <- dados %>%
+  filter((mandante == "Gremio" & visitante == "Internacional") | 
+         (mandante == "Internacional" & visitante == "Gremio"))
+
+resultados_grenal <- grenal %>%
+  mutate(resultado_grenal = case_when(
+    vencedor == "Gremio" ~ "Vitoria_Gremio",
+    vencedor == "Internacional" ~ "Vitoria_Inter",
+    TRUE ~ "Empate"
+  )) %>%
+  count(resultado_grenal)
+
+print(resultados_grenal)
+
+ggplot(resultados_grenal, aes(x = resultado_grenal, y = n, fill = resultado_grenal)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Empate" = "green", "Vitoria_Gremio" = "blue", "Vitoria_Inter" = "red")) +
+  labs(title = "Resultados dos Confrontos Entre Grêmio e Internacional",
+       x = "Resultado",
+       y = "Número de Jogos") +
+  theme_minimal()
+```
+
+# Correlação jogos do Grêmio em casa (mandante)
+```{r}
+gremio_mandante <- dados %>% filter(mandante == "Gremio")
+
+correlacao_gremio <- cor(gremio_mandante$mandante_Placar, gremio_mandante$visitante_Placar)
+
+print(correlacao_gremio)
+
+ggplot(gremio_mandante, aes(x = visitante_Placar, y = mandante_Placar)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Correlação entre Gols do Grêmio como Mandante e Gols do Visitante",
+       x = "Gols do Visitante",
+       y = "Gols do Grêmio (Mandante)") +
+  theme_minimal()
+```
+
+# Correlação jogos do Inter em casa (mandante)
+```{r}
+inter_mandante <- dados %>% filter(mandante == "Internacional")
+
+correlacao_inter <- cor(inter_mandante$mandante_Placar, inter_mandante$visitante_Placar)
+
+print(correlacao_inter)
+
+ggplot(inter_mandante, aes(x = visitante_Placar, y = mandante_Placar)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Correlação entre Gols do Grêmio como Mandante e Gols do Visitante",
+       x = "Gols do Visitante",
+       y = "Gols do Grêmio (Mandante)") +
+  theme_minimal()
+```
