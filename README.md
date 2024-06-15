@@ -1,6 +1,6 @@
 # CampeonatoBrasileiro
 
-**Projeto realizado na disciplina de Tópicos Avançados em Computação III, dentro do curso de Ciência da Computação, no ano de 2024.**
+**Projeto realizado na disciplina de Tópicos Avançados em Computação IV, dentro do curso de Ciência da Computação, no ano de 2024.**
 
 Escolher uma ou mais bases de dados para utilização no trabalho.
 
